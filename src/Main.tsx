@@ -1,4 +1,8 @@
 import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogOverlay,
   Box,
   Button,
   ButtonGroup,
@@ -26,12 +30,13 @@ import { useEthereum } from "./hooks/useEthereum";
 import { handleErrorWithToast, runInAsync, weiToEth } from "./utils";
 
 interface IEthInputProps {
+  defaultDecimals?: number;
   value: ethers.BigNumber;
   onChange: (value: ethers.BigNumber) => void;
 }
 
 const EthInput: React.FC<IEthInputProps> = (props) => {
-  const [decimals, setDecimals] = useState<number>(0);
+  const [decimals, setDecimals] = useState<number>(props.defaultDecimals || 0);
   const [value, setValue] = useState<ethers.BigNumber>(props.value);
   const formattedValue = useMemo(
     () => ethers.utils.formatUnits(value, decimals),
@@ -65,17 +70,51 @@ const EthInput: React.FC<IEthInputProps> = (props) => {
   );
 };
 
+function useStateWithSessionStorage<T>(
+  defaultValue: T,
+  sessionStorageKey: string
+): [T, (nextState: T) => void] {
+  let value = null;
+  const json = sessionStorage.getItem(sessionStorageKey);
+  if (json === null) {
+    value = defaultValue;
+  } else {
+    try {
+      value = JSON.parse(json);
+      if (value === "" || Object.is(value, {}) || value?.length === 0) {
+        value = defaultValue;
+      }
+    } catch {
+      value = defaultValue;
+    }
+  }
+
+  const [state, setState] = useState<T>(value || defaultValue);
+
+  const wrappedSetState = (nextState: T) => {
+    setState(nextState);
+    sessionStorage.setItem(sessionStorageKey, JSON.stringify(nextState))
+  };
+
+  return [state, wrappedSetState];
+}
+
 function Main() {
   const { provider, loadProvider, signerAddress, signer, signerBalance } =
     useEthereum();
   const toast = useToast();
-  const [contractAddress, setContractAddress] = useState<string>();
-  const [abiString, setAbiString] = useState<any>();
+  const [contractAddress, setContractAddress] =
+    useStateWithSessionStorage<string>("", "contract_addresss");
+  const [abiString, setAbiString] = useStateWithSessionStorage<string>(
+    "",
+    "abi_string"
+  );
   const [abi, setAbi] = useState<utils.Interface>();
   const functions = useMemo<[string, FunctionFragment][]>(() => {
     return abi ? Object.entries(abi.functions) : [];
   }, [abi]);
   const [msgValue, setMsgValue] = useState<BigNumber>(BigNumber.from(0));
+  const [gasLimit, setGasLimit] = useState<BigNumber>(BigNumber.from(3000000));
 
   return (
     <Container p="4" maxW="80vw">
@@ -124,10 +163,19 @@ function Main() {
               }}
             ></EthInput>
           </FormLabel>
+          <FormLabel>
+            gasLimit
+            <Input
+              value={gasLimit.toString()}
+              onChange={(e) => {
+                setGasLimit(BigNumber.from(e.target.value));
+              }}
+            ></Input>
+          </FormLabel>
           <Button
             onClick={() => {
               runInAsync(() => {
-                const itf = new utils.Interface(abiString);
+                const itf = new utils.Interface(abiString as unknown as any);
                 setAbi(itf);
               }).catch(handleErrorWithToast(toast));
             }}
@@ -138,7 +186,7 @@ function Main() {
           <Button
             onClick={() => {
               runInAsync(() => {
-                const itf = new utils.Interface(abiString);
+                const itf = new utils.Interface(abiString as unknown as any);
                 setAbi(itf);
               }).catch(handleErrorWithToast(toast));
             }}
@@ -158,6 +206,7 @@ function Main() {
                   name={name}
                   fragment={fragment}
                   msgValue={msgValue}
+                  gasLimit={gasLimit}
                 />
               );
             })}
@@ -173,6 +222,7 @@ interface IFunctionController {
   contractInterface: ethers.utils.Interface | undefined;
   name: string;
   fragment: FunctionFragment;
+  gasLimit: BigNumber;
   msgValue?: BigNumber;
 }
 
@@ -211,6 +261,7 @@ const callWriteContract = async (
 
 const FunctionController: React.FC<IFunctionController> = (props) => {
   const msgValue = props.msgValue || BigNumber.from(0);
+  const gasLimit = props.gasLimit;
   const toast = useToast();
   const { signer } = useEthereum();
   const contract: ethers.Contract | undefined = useMemo(() => {
@@ -248,6 +299,7 @@ const FunctionController: React.FC<IFunctionController> = (props) => {
         setIsLoading(true);
         const overrides: IWriteOverrides = {
           value: msgValue,
+          gasLimit: gasLimit,
         };
         const callResult = await callWriteContract(
           contract,

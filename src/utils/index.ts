@@ -4,6 +4,7 @@ import { BigNumber, ethers } from "ethers";
 export const runInAsync = async (func: any) => func();
 export const handleErrorWithToast =
   (toast: ReturnType<typeof useToast>) => (error: any) => {
+    console.error(error)
     toast({
       title: "Error",
       description: error?.message,
