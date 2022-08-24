@@ -93,7 +93,7 @@ function useStateWithSessionStorage<T>(
 
   const wrappedSetState = (nextState: T) => {
     setState(nextState);
-    sessionStorage.setItem(sessionStorageKey, JSON.stringify(nextState))
+    sessionStorage.setItem(sessionStorageKey, JSON.stringify(nextState));
   };
 
   return [state, wrappedSetState];
@@ -103,6 +103,10 @@ function Main() {
   const { provider, loadProvider, signerAddress, signer, signerBalance } =
     useEthereum();
   const toast = useToast();
+  const [sessionName, setSessionName] = useStateWithSessionStorage<string>(
+    "",
+    "session_name"
+  );
   const [contractAddress, setContractAddress] =
     useStateWithSessionStorage<string>("", "contract_addresss");
   const [abiString, setAbiString] = useStateWithSessionStorage<string>(
@@ -120,6 +124,13 @@ function Main() {
     <Container p="4" maxW="80vw">
       <SimpleGrid columns={2} gap="8">
         <Flex direction={"column"} gap="2">
+          <FormLabel>
+            Session Name
+            <Input
+              defaultValue={sessionName}
+              onChange={(e) => setSessionName(e.target.value)}
+            ></Input>
+          </FormLabel>
           <Button onClick={loadProvider}>Load Accounts</Button>
           <FormLabel>
             Signer Address
