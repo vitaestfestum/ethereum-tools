@@ -27,7 +27,13 @@ import { FunctionFragment } from "ethers/lib/utils";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { AddIcon, MinusIcon } from "@chakra-ui/icons";
 import { useEthereum } from "./hooks/useEthereum";
-import { handleErrorWithToast, runInAsync, weiToEth } from "./utils";
+import {
+  handleErrorWithToast,
+  runInAsync,
+  useStateWithLocalStorage,
+  useStateWithSessionStorage,
+  weiToEth,
+} from "./utils";
 
 interface IEthInputProps {
   defaultDecimals?: number;
@@ -70,67 +76,140 @@ const EthInput: React.FC<IEthInputProps> = (props) => {
   );
 };
 
-function useStateWithSessionStorage<T>(
-  defaultValue: T,
-  sessionStorageKey: string
-): [T, (nextState: T) => void] {
-  let value = null;
-  const json = sessionStorage.getItem(sessionStorageKey);
-  if (json === null) {
-    value = defaultValue;
-  } else {
-    try {
-      value = JSON.parse(json);
-      if (value === "" || Object.is(value, {}) || value?.length === 0) {
-        value = defaultValue;
-      }
-    } catch {
-      value = defaultValue;
-    }
-  }
-
-  const [state, setState] = useState<T>(value || defaultValue);
-
-  const wrappedSetState = (nextState: T) => {
-    setState(nextState);
-    sessionStorage.setItem(sessionStorageKey, JSON.stringify(nextState));
-  };
-
-  return [state, wrappedSetState];
+interface IContract {
+  name: string;
+  address: string;
+  abi: string;
 }
 
 function Main() {
   const { provider, loadProvider, signerAddress, signer, signerBalance } =
     useEthereum();
-  const toast = useToast();
-  const [sessionName, setSessionName] = useStateWithSessionStorage<string>(
-    "",
-    "session_name"
-  );
-  const [contractAddress, setContractAddress] =
+  const [contracts, setContracts, resetContracts] = useStateWithLocalStorage<
+    Record<string, IContract>
+  >({}, "contracts");
+  const [sessionName, setSessionName, resetSessionName] =
+    useStateWithSessionStorage<string>("", "session_name");
+  const [contractAddress, setContractAddress, resetContractAddress] =
     useStateWithSessionStorage<string>("", "contract_addresss");
-  const [abiString, setAbiString] = useStateWithSessionStorage<string>(
-    "",
-    "abi_string"
-  );
+  const [abiString, setAbiString, resetAbiString] =
+    useStateWithSessionStorage<string>("", "abi_string");
   const [abi, setAbi] = useState<utils.Interface>();
+  const [msgValue, setMsgValue] = useState<BigNumber>(BigNumber.from(0));
+  const [gasLimit, setGasLimit] = useState<BigNumber>(BigNumber.from(3000000));
+
+  const toast = useToast();
+
+  const [
+    currentContractName,
+    setCurrentContractName,
+    resetCurrentContractName,
+  ] = useStateWithSessionStorage<string>("", "current_contract_name");
+
   const functions = useMemo<[string, FunctionFragment][]>(() => {
     return abi ? Object.entries(abi.functions) : [];
   }, [abi]);
-  const [msgValue, setMsgValue] = useState<BigNumber>(BigNumber.from(0));
-  const [gasLimit, setGasLimit] = useState<BigNumber>(BigNumber.from(3000000));
+  useEffect(() => {
+    document.title = sessionName;
+  }, [sessionName]);
+
+  const loadContract = (name: string) => {
+    if (name) {
+      const c = contracts[name];
+      setAbiString(c.abi);
+      setSessionName(c.name);
+      setContractAddress(c.address);
+    }
+  };
 
   return (
     <Container p="4" maxW="80vw">
       <SimpleGrid columns={2} gap="8">
         <Flex direction={"column"} gap="2">
           <FormLabel>
-            Session Name
+            Select Contract
+            <Select
+              value={currentContractName}
+              onChange={(e) => {
+                setCurrentContractName(e.target.value);
+                loadContract(e.target.value);
+              }}
+            >
+              <option value=""></option>
+              {Object.entries(contracts).map(([name, contract]) => {
+                return (
+                  <option value={name} key={name}>
+                    {contract.name}
+                  </option>
+                );
+              })}
+            </Select>
+          </FormLabel>
+          <FormLabel>
+            Contract Name
             <Input
+              value={sessionName}
               defaultValue={sessionName}
-              onChange={(e) => setSessionName(e.target.value)}
+              onChange={(e) => {
+                setSessionName(e.target.value);
+              }}
             ></Input>
           </FormLabel>
+          <Button
+            onClick={() => {
+              resetAbiString();
+              resetContractAddress();
+              resetSessionName();
+            }}
+            colorScheme="cyan"
+          >
+            New Contract
+          </Button>
+          <Button
+            onClick={() => {
+              setContracts({
+                ...contracts,
+                [sessionName]: {
+                  abi: abiString,
+                  address: contractAddress,
+                  name: sessionName,
+                },
+              });
+
+              setCurrentContractName(sessionName);
+              toast({
+                status: "success",
+                title: `contract ${sessionName} saved`,
+              });
+            }}
+            colorScheme="blue"
+          >
+            Save Contract
+          </Button>
+          <Button
+            onClick={() => {
+              if (currentContractName) {
+                const nextContracts = { ...contracts };
+                delete nextContracts[currentContractName];
+                setContracts(nextContracts);
+              }
+
+              resetCurrentContractName();
+              resetContractAddress();
+              resetSessionName();
+              resetAbiString();
+            }}
+            colorScheme="orange"
+          >
+            Delete Contract
+          </Button>
+          <Button
+            onClick={() => {
+              resetContracts();
+            }}
+          >
+            Reset
+          </Button>
           <Button onClick={loadProvider}>Load Accounts</Button>
           <FormLabel>
             Signer Address
@@ -203,7 +282,7 @@ function Main() {
             }}
             colorScheme="gray"
           >
-            SAVE
+            SAVE SESSION
           </Button>
         </Flex>
         <SimpleGrid>
@@ -343,7 +422,7 @@ const FunctionController: React.FC<IFunctionController> = (props) => {
             w="full"
             onClick={handleCall}
           >
-            {isLoading ? <Spinner /> : props.name}
+            {isLoading ? <Spinner /> : props.fragment.name}
           </Button>
         </Box>
         <Box>
