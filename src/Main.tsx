@@ -362,7 +362,7 @@ const FunctionController: React.FC<IFunctionController> = (props) => {
         signer
       );
     }
-  }, [signer]);
+  }, [props.contractAddress, props.contractInterface, props, signer]);
   const [show, setShow] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [result, setResult] = useState<any>(null);
@@ -374,7 +374,7 @@ const FunctionController: React.FC<IFunctionController> = (props) => {
 
   const handleCall = async () => {
     runInAsync(async () => {
-      if (stateMutability === "view") {
+      if (stateMutability === "view" || stateMutability === "pure") {
         setIsLoading(true);
         const overrides: IReadOverrides = {};
         const callResult = await callReadContract(
@@ -418,7 +418,11 @@ const FunctionController: React.FC<IFunctionController> = (props) => {
       <Flex gap="2" mb={show ? 4 : 0}>
         <Box flex={1}>
           <Button
-            colorScheme={stateMutability === "view" ? "blue" : "red"}
+            colorScheme={
+              stateMutability === "view" || stateMutability === "pure"
+                ? "blue"
+                : "red"
+            }
             w="full"
             onClick={handleCall}
           >
@@ -437,7 +441,9 @@ const FunctionController: React.FC<IFunctionController> = (props) => {
             return (
               <Flex key={input.name} gap="2" alignItems="center">
                 <Box flex="1">
-                  <FormLabel>{input.name}</FormLabel>
+                  <FormLabel>
+                    {input.name} | {input.baseType}
+                  </FormLabel>
                 </Box>
                 <Box flex="2">
                   <Input
